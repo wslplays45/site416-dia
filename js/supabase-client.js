@@ -12,7 +12,7 @@
 // ============================================================
 
 const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlrZnBoZ2x1eWtrdm9hdGRvYWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwODAzOTUsImV4cCI6MjA5OTY1NjM5NX0.fs2zG7y5ub2xiyu8xb34lQfR2gvzVAetGEt0s2RmGUU";
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
