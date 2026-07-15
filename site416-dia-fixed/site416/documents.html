@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Documents :: Site-416 DIA</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="page">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">416</div>
+        <div class="brand-text">Internal Auditing<small>Site-416</small></div>
+      </div>
+      <nav class="nav-links">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="personnel.html">Personnel</a>
+        <a href="documents.html" class="active">Documents</a>
+        <a href="admin.html" id="admin-link" style="display:none;">Admin</a>
+        <a href="#" id="signout-link">Sign Out</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="container mt-24 mb-24" style="flex:1;">
+
+    <div class="flex-between mb-24" style="flex-wrap: wrap; gap: 12px;">
+      <h2 style="margin:0;">Documents &amp; Findings</h2>
+      <button class="btn" id="new-doc-btn" style="display:none;">+ New Document</button>
+    </div>
+
+    <div id="new-doc-panel" class="panel mb-24" style="display:none;">
+      <div class="panel-title"><span>File New Document</span></div>
+      <div id="doc-error" class="error-box"></div>
+      <form id="doc-form">
+        <div class="field"><label>Title</label><input type="text" id="d-title" required></div>
+        <div class="field">
+          <label>Classification Level</label>
+          <select id="d-classification">
+            <option value="1">L1 — Division Staff</option>
+            <option value="2">L2 — Senior Staff</option>
+            <option value="3">L3 — Supervisory</option>
+            <option value="4">L4 — Directorate</option>
+            <option value="5">L5 — O5 Only</option>
+          </select>
+        </div>
+        <div class="field"><label>Body</label><textarea id="d-body" rows="6" required></textarea></div>
+        <div class="flex gap-12">
+          <button type="submit" class="btn">File Document</button>
+          <button type="button" class="btn ghost" id="cancel-doc-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="doc-list" class="panel">
+      <div class="panel-title"><span>On File</span></div>
+      <div id="doc-list-inner"><div class="empty-state">Loading...</div></div>
+    </div>
+
+  </div>
+
+  <footer>SCP FOUNDATION &mdash; SITE-416 &mdash; SECURE. CONTAIN. PROTECT.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script>
+(async () => {
+  await requireSession();
+  const profile = await getCurrentProfile();
+  if (!profile) return;
+
+  if (profile.role === "admin") document.getElementById("admin-link").style.display = "inline";
+
+  const canWrite = roleRank(profile.role) >= roleRank("auditor");
+  if (canWrite) document.getElementById("new-doc-btn").style.display = "inline-flex";
+
+  document.getElementById("new-doc-btn").addEventListener("click", () => {
+    document.getElementById("new-doc-panel").style.display = "block";
+  });
+  document.getElementById("cancel-doc-btn").addEventListener("click", () => {
+    document.getElementById("new-doc-panel").style.display = "none";
+  });
+
+  document.getElementById("doc-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById("doc-error");
+    errorBox.classList.remove("show");
+
+    const payload = {
+      title: document.getElementById("d-title").value.trim(),
+      classification_level: parseInt(document.getElementById("d-classification").value, 10),
+      body: document.getElementById("d-body").value.trim(),
+      division: profile.division,
+      author: profile.id
+    };
+
+    const { data, error } = await supabaseClient.from("documents").insert(payload).select().single();
+
+    if (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.add("show");
+      return;
+    }
+
+    await logAction("document.create", "documents", data.id, { title: data.title });
+    document.getElementById("new-doc-panel").style.display = "none";
+    e.target.reset();
+    loadDocs();
+  });
+
+  async function loadDocs() {
+    const { data, error } = await supabaseClient
+      .from("documents")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const el = document.getElementById("doc-list-inner");
+
+    if (error) {
+      el.innerHTML = `<div class="empty-state">Failed to load documents: ${error.message}</div>`;
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      el.innerHTML = `<div class="empty-state">Nothing on file yet within your clearance.</div>`;
+      return;
+    }
+
+    el.innerHTML = data.map(d => `
+      <div class="panel" style="margin-top:12px;">
+        <div class="flex-between" style="align-items:flex-start;">
+          <h3 style="margin-bottom:4px;">${escapeHtml(d.title)}</h3>
+          <span class="stamp"><span class="stamp-dot"></span>L${d.classification_level}</span>
+        </div>
+        <p class="muted mono" style="font-size:11px; margin-bottom:12px;">
+          FILED ${new Date(d.created_at).toLocaleString()}
+        </p>
+        <p style="white-space: pre-wrap;">${escapeHtml(d.body)}</p>
+      </div>
+    `).join("");
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  loadDocs();
+
+  document.getElementById("signout-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    signOut();
+  });
+})();
+</script>
+
+</body>
+</html>
