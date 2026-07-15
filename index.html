@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site-416 :: Department of Internal Auditing</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="page">
+  <div class="hero">
+    <div class="hero-card">
+
+      <div class="file-header">
+        <span>FOUNDATION FILE // SITE-416</span>
+        <span>REF. DIA-000</span>
+      </div>
+
+      <div class="redact-line bar" style="width: 62%; animation-delay: 0s;"></div>
+      <div class="redact-line bar" style="width: 40%; animation-delay: 0.15s;"></div>
+      <div class="redact-line bar" style="width: 71%; animation-delay: 0.3s;"></div>
+
+      <h1 class="hero-title">Department of<br>Internal Auditing</h1>
+      <p class="hero-sub mono">SITE-416 &nbsp;·&nbsp; PERSONNEL, RECORDS &amp; COMPLIANCE</p>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>Personnel Login</span>
+          <span class="muted mono" style="font-size:10.5px;">AUTHORIZED ACCESS ONLY</span>
+        </div>
+
+        <div id="login-error" class="error-box"></div>
+
+        <form id="login-form">
+          <div class="field">
+            <label for="email">Foundation Email</label>
+            <input type="email" id="email" required autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input type="password" id="password" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn full" id="login-btn">Access Terminal</button>
+        </form>
+
+        <p class="hint center-text mt-24">
+          No account yet? <a href="register.html">Register with an invite code &rarr;</a>
+        </p>
+      </div>
+
+      <p class="hint center-text mt-24">
+        Unauthorized access to this terminal is a Class-2 protocol violation and will be logged.
+      </p>
+    </div>
+  </div>
+
+  <footer>SCP FOUNDATION &mdash; SITE-416 &mdash; SECURE. CONTAIN. PROTECT.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script>
+  // If already logged in, skip straight to the dashboard.
+  (async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) window.location.href = "dashboard.html";
+  })();
+
+  const form = document.getElementById("login-form");
+  const errorBox = document.getElementById("login-error");
+  const btn = document.getElementById("login-btn");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorBox.classList.remove("show");
+    btn.textContent = "Verifying...";
+    btn.disabled = true;
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.add("show");
+      btn.textContent = "Access Terminal";
+      btn.disabled = false;
+      return;
+    }
+
+    await logAction("session.login");
+    window.location.href = "dashboard.html";
+  });
+</script>
+
+</body>
+</html>
