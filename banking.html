@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banking :: Site-416 DIA</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="page">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">416</div>
+        <div class="brand-text">Internal Auditing<small>Site-416</small></div>
+      </div>
+      <nav class="nav-links">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="personnel.html">Personnel</a>
+        <a href="documents.html">Documents</a>
+        <a href="banking.html" class="active">Banking</a>
+        <a href="admin.html" id="admin-link" style="display:none;">Admin</a>
+        <a href="#" id="signout-link">Sign Out</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="container mt-24 mb-24" style="flex:1;">
+
+    <h2 class="mb-24">Banking</h2>
+
+    <div class="panel mb-24">
+      <div class="panel-title"><span>My Account</span></div>
+      <div id="my-balance">
+        <span class="balance-currency">CR</span><span class="balance-display" id="balance-num">—</span>
+      </div>
+      <h3 class="mt-24" style="font-size:13px;">Transaction History</h3>
+      <div id="my-transactions"><div class="empty-state">Loading...</div></div>
+    </div>
+
+    <div id="staff-panel" style="display:none;">
+
+      <div class="panel mb-24">
+        <div class="panel-title">
+          <span>Account Operations</span>
+        </div>
+
+        <div class="tabs">
+          <button class="tab-btn active" data-optab="deposit">Deposit</button>
+          <button class="tab-btn" data-optab="withdraw">Withdraw</button>
+          <button class="tab-btn" data-optab="transfer">Transfer</button>
+        </div>
+
+        <div id="tx-error" class="error-box"></div>
+        <div id="tx-success" class="success-box"></div>
+
+        <!-- Single-account picker (deposit / withdraw) -->
+        <div id="single-account-picker">
+          <div class="field">
+            <label>Search Account</label>
+            <input type="text" id="search-single" placeholder="Name or callsign...">
+          </div>
+          <div id="results-single"></div>
+          <p class="hint" id="single-selected-hint"></p>
+        </div>
+
+        <!-- Two-account picker (transfer) -->
+        <div id="transfer-account-picker" style="display:none;">
+          <div class="grid gap-12">
+            <div>
+              <div class="field">
+                <label>From Account</label>
+                <input type="text" id="search-from" placeholder="Name or callsign...">
+              </div>
+              <div id="results-from"></div>
+              <p class="hint" id="from-selected-hint">No source account selected.</p>
+            </div>
+            <div>
+              <div class="field">
+                <label>To Account</label>
+                <input type="text" id="search-to" placeholder="Name or callsign...">
+              </div>
+              <div id="results-to"></div>
+              <p class="hint" id="to-selected-hint">No destination account selected.</p>
+            </div>
+          </div>
+        </div>
+
+        <form id="op-form" class="mt-24">
+          <div class="field">
+            <label>Amount (CR)</label>
+            <input type="number" id="op-amount" step="0.01" min="0.01" required>
+          </div>
+          <div class="field">
+            <label>Note <span class="muted">(optional)</span></label>
+            <input type="text" id="op-note">
+          </div>
+          <button type="submit" class="btn">Submit Transaction</button>
+        </form>
+      </div>
+
+    </div>
+
+  </div>
+
+  <footer>SCP FOUNDATION &mdash; SITE-416 &mdash; SECURE. CONTAIN. PROTECT.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script>
+(async () => {
+  await requireSession();
+  const profile = await getCurrentProfile();
+  if (!profile) return;
+
+  if (profile.role === "admin") document.getElementById("admin-link").style.display = "inline";
+
+  const isBankingStaff = profile.role === "admin" || profile.is_banking_staff;
+
+  // ---------- My Account ----------
+  let myAccount = null;
+
+  async function loadMyAccount() {
+    const { data: account } = await supabaseClient
+      .from("bank_accounts")
+      .select("*")
+      .eq("profile_id", profile.id)
+      .single();
+
+    myAccount = account;
+    document.getElementById("balance-num").textContent = account ? formatCurrency(account.balance) : "0.00";
+
+    if (!account) return;
+
+    const { data: txs } = await supabaseClient
+      .from("bank_transactions")
+      .select("*")
+      .eq("account_id", account.id)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    const el = document.getElementById("my-transactions");
+    if (!txs || txs.length === 0) {
+      el.innerHTML = `<div class="empty-state">No transactions yet.</div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Type</th><th>Amount</th><th>Balance After</th><th>Note</th><th>Date</th></tr></thead>
+        <tbody>
+          ${txs.map(t => `
+            <tr>
+              <td class="mono">${t.type.replace("_", " ")}</td>
+              <td class="mono">${t.type === "deposit" || t.type === "transfer_in" ? "+" : "-"}${formatCurrency(t.amount)}</td>
+              <td class="mono">${formatCurrency(t.balance_after)}</td>
+              <td class="muted">${escapeHtml(t.note || "—")}</td>
+              <td class="mono muted">${new Date(t.created_at).toLocaleDateString()}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  loadMyAccount();
+
+  // ---------- Banking staff operations ----------
+  if (!isBankingStaff) return;
+
+  document.getElementById("staff-panel").style.display = "block";
+
+  let currentOp = "deposit";
+  let singleSelected = null;
+  let fromSelected = null;
+  let toSelected = null;
+
+  function makeSearcher(inputId, resultsId, onSelect) {
+    const input = document.getElementById(inputId);
+    const resultsEl = document.getElementById(resultsId);
+    let timeout;
+
+    input.addEventListener("input", () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(run, 300);
+    });
+
+    async function run() {
+      const q = input.value.trim();
+      if (!q) { resultsEl.innerHTML = ""; return; }
+
+      const { data, error } = await supabaseClient.rpc("bank_search_accounts", { p_query: q });
+
+      if (error) {
+        resultsEl.innerHTML = `<div class="empty-state">${error.message}</div>`;
+        return;
+      }
+      if (!data || data.length === 0) {
+        resultsEl.innerHTML = `<div class="empty-state">No accounts found.</div>`;
+        return;
+      }
+
+      resultsEl.innerHTML = `
+        <table>
+          <thead><tr><th>Name</th><th>Division / Rank</th><th>Balance</th><th></th></tr></thead>
+          <tbody>
+            ${data.map(r => `
+              <tr>
+                <td>${escapeHtml(r.full_name)} ${r.callsign ? `<span class="mono muted">(${escapeHtml(r.callsign)})</span>` : ""}</td>
+                <td class="muted">${escapeHtml(r.division)} / ${escapeHtml(r.rank)}</td>
+                <td class="mono">${formatCurrency(r.balance)}</td>
+                <td><button type="button" class="btn small pick-btn" data-id="${r.account_id}" data-name="${escapeHtml(r.full_name)}">Select</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+
+      resultsEl.querySelectorAll(".pick-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          onSelect({ id: btn.dataset.id, name: btn.dataset.name });
+          resultsEl.innerHTML = "";
+          input.value = "";
+        });
+      });
+    }
+  }
+
+  makeSearcher("search-single", "results-single", (acct) => {
+    singleSelected = acct;
+    document.getElementById("single-selected-hint").textContent = `Selected: ${acct.name}`;
+  });
+  makeSearcher("search-from", "results-from", (acct) => {
+    fromSelected = acct;
+    document.getElementById("from-selected-hint").textContent = `Selected: ${acct.name}`;
+  });
+  makeSearcher("search-to", "results-to", (acct) => {
+    toSelected = acct;
+    document.getElementById("to-selected-hint").textContent = `Selected: ${acct.name}`;
+  });
+
+  document.querySelectorAll("[data-optab]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-optab]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentOp = btn.dataset.optab;
+      document.getElementById("single-account-picker").style.display = currentOp === "transfer" ? "none" : "block";
+      document.getElementById("transfer-account-picker").style.display = currentOp === "transfer" ? "block" : "none";
+      document.getElementById("tx-error").classList.remove("show");
+      document.getElementById("tx-success").classList.remove("show");
+    });
+  });
+
+  document.getElementById("op-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById("tx-error");
+    const successBox = document.getElementById("tx-success");
+    errorBox.classList.remove("show");
+    successBox.classList.remove("show");
+
+    const amount = parseFloat(document.getElementById("op-amount").value);
+    const note = document.getElementById("op-note").value.trim() || null;
+    let result, successMsg;
+
+    if (currentOp === "deposit" || currentOp === "withdraw") {
+      if (!singleSelected) {
+        errorBox.textContent = "Select an account first.";
+        errorBox.classList.add("show");
+        return;
+      }
+      const fn = currentOp === "deposit" ? "bank_deposit" : "bank_withdraw";
+      result = await supabaseClient.rpc(fn, { p_account_id: singleSelected.id, p_amount: amount, p_note: note });
+      if (!result.error) {
+        successMsg = `${currentOp === "deposit" ? "Deposited" : "Withdrew"} ${formatCurrency(amount)} CR ${currentOp === "deposit" ? "to" : "from"} ${singleSelected.name}. New balance: ${formatCurrency(result.data.balance)} CR.`;
+      }
+    } else {
+      if (!fromSelected || !toSelected) {
+        errorBox.textContent = "Select both a source and destination account.";
+        errorBox.classList.add("show");
+        return;
+      }
+      result = await supabaseClient.rpc("bank_transfer", {
+        p_from_account: fromSelected.id,
+        p_to_account: toSelected.id,
+        p_amount: amount,
+        p_note: note
+      });
+      if (!result.error) {
+        successMsg = `Transferred ${formatCurrency(amount)} CR from ${fromSelected.name} to ${toSelected.name}.`;
+      }
+    }
+
+    if (result.error) {
+      errorBox.textContent = result.error.message;
+      errorBox.classList.add("show");
+      return;
+    }
+
+    await logAction(`banking.${currentOp}`, "bank_accounts", null, { amount, note });
+    successBox.textContent = successMsg;
+    successBox.classList.add("show");
+    document.getElementById("op-form").reset();
+
+    singleSelected = null; fromSelected = null; toSelected = null;
+    document.getElementById("single-selected-hint").textContent = "";
+    document.getElementById("from-selected-hint").textContent = "No source account selected.";
+    document.getElementById("to-selected-hint").textContent = "No destination account selected.";
+
+    loadMyAccount();
+  });
+
+  document.getElementById("signout-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    signOut();
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,18 +1,11 @@
 // ============================================================
 // SITE-416 :: Supabase client
 // Fill these in from Project Settings > API in your Supabase
-// dashboard. The anon/public key is safe to expose in a static
-// frontend — Row Level Security in schema.sql does the real
-// enforcement server-side.
-//
-// NOTE: the client is named "supabaseClient" (not "supabase")
-// on purpose — the CDN script tag above already creates a
-// global called "supabase", so reusing that name causes a
-// "already been declared" error in the browser.
+// dashboard.
 // ============================================================
 
-const SUPABASE_URL = "https://ikfphgluykkvoatdoafj.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlrZnBoZ2x1eWtrdm9hdGRvYWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwODAzOTUsImV4cCI6MjA5OTY1NjM5NX0.fs2zG7y5ub2xiyu8xb34lQfR2gvzVAetGEt0s2RmGUU";
+const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -68,4 +61,15 @@ function roleRank(role) {
 function renderStamp(profile) {
   if (!profile) return "";
   return `<span class="stamp role-${profile.role}"><span class="stamp-dot"></span>${profile.rank} · ${profile.division}</span>`;
+}
+
+function formatCurrency(amount) {
+  const n = Number(amount);
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
 }

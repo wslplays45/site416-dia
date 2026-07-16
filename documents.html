@@ -19,6 +19,7 @@
         <a href="dashboard.html">Dashboard</a>
         <a href="personnel.html">Personnel</a>
         <a href="documents.html" class="active">Documents</a>
+        <a href="banking.html">Banking</a>
         <a href="admin.html" id="admin-link" style="display:none;">Admin</a>
         <a href="#" id="signout-link">Sign Out</a>
       </nav>
@@ -30,6 +31,11 @@
     <div class="flex-between mb-24" style="flex-wrap: wrap; gap: 12px;">
       <h2 style="margin:0;">Documents &amp; Findings</h2>
       <button class="btn" id="new-doc-btn" style="display:none;">+ New Document</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="division">My Division</button>
+      <button class="tab-btn" data-tab="department">Department-Wide</button>
     </div>
 
     <div id="new-doc-panel" class="panel mb-24" style="display:none;">
@@ -47,6 +53,10 @@
             <option value="5">L5 — O5 Only</option>
           </select>
         </div>
+        <div class="checkbox-field" id="dept-wide-field" style="display:none;">
+          <input type="checkbox" id="d-department-wide">
+          <label for="d-department-wide">Post as Department-Wide (visible to all divisions, subject to classification)</label>
+        </div>
         <div class="field"><label>Body</label><textarea id="d-body" rows="6" required></textarea></div>
         <div class="flex gap-12">
           <button type="submit" class="btn">File Document</button>
@@ -56,7 +66,7 @@
     </div>
 
     <div id="doc-list" class="panel">
-      <div class="panel-title"><span>On File</span></div>
+      <div class="panel-title"><span id="doc-list-title">Division Documents</span></div>
       <div id="doc-list-inner"><div class="empty-state">Loading...</div></div>
     </div>
 
@@ -73,16 +83,33 @@
   const profile = await getCurrentProfile();
   if (!profile) return;
 
+  let allDocs = [];
+  let activeTab = "division";
+
   if (profile.role === "admin") document.getElementById("admin-link").style.display = "inline";
 
   const canWrite = roleRank(profile.role) >= roleRank("auditor");
   if (canWrite) document.getElementById("new-doc-btn").style.display = "inline-flex";
+
+  const canPostDeptWide = roleRank(profile.role) >= roleRank("supervisor");
+  if (canPostDeptWide) document.getElementById("dept-wide-field").style.display = "flex";
 
   document.getElementById("new-doc-btn").addEventListener("click", () => {
     document.getElementById("new-doc-panel").style.display = "block";
   });
   document.getElementById("cancel-doc-btn").addEventListener("click", () => {
     document.getElementById("new-doc-panel").style.display = "none";
+  });
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeTab = btn.dataset.tab;
+      document.getElementById("doc-list-title").textContent =
+        activeTab === "division" ? "Division Documents" : "Department-Wide Documents";
+      renderDocs();
+    });
   });
 
   document.getElementById("doc-form").addEventListener("submit", async (e) => {
@@ -93,6 +120,7 @@
     const payload = {
       title: document.getElementById("d-title").value.trim(),
       classification_level: parseInt(document.getElementById("d-classification").value, 10),
+      department_wide: canPostDeptWide ? document.getElementById("d-department-wide").checked : false,
       body: document.getElementById("d-body").value.trim(),
       division: profile.division,
       author: profile.id
@@ -112,42 +140,42 @@
     loadDocs();
   });
 
-  async function loadDocs() {
-    const { data, error } = await supabaseClient
-      .from("documents")
-      .select("*")
-      .order("created_at", { ascending: false });
-
+  function renderDocs() {
+    const filtered = allDocs.filter(d => activeTab === "division" ? !d.department_wide : d.department_wide);
     const el = document.getElementById("doc-list-inner");
 
-    if (error) {
-      el.innerHTML = `<div class="empty-state">Failed to load documents: ${error.message}</div>`;
-      return;
-    }
-
-    if (!data || data.length === 0) {
+    if (filtered.length === 0) {
       el.innerHTML = `<div class="empty-state">Nothing on file yet within your clearance.</div>`;
       return;
     }
 
-    el.innerHTML = data.map(d => `
+    el.innerHTML = filtered.map(d => `
       <div class="panel" style="margin-top:12px;">
         <div class="flex-between" style="align-items:flex-start;">
           <h3 style="margin-bottom:4px;">${escapeHtml(d.title)}</h3>
           <span class="stamp"><span class="stamp-dot"></span>L${d.classification_level}</span>
         </div>
         <p class="muted mono" style="font-size:11px; margin-bottom:12px;">
-          FILED ${new Date(d.created_at).toLocaleString()}
+          ${d.department_wide ? "DEPARTMENT-WIDE" : escapeHtml(d.division).toUpperCase()} &middot; FILED ${new Date(d.created_at).toLocaleString()}
         </p>
         <p style="white-space: pre-wrap;">${escapeHtml(d.body)}</p>
       </div>
     `).join("");
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+  async function loadDocs() {
+    const { data, error } = await supabaseClient
+      .from("documents")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      document.getElementById("doc-list-inner").innerHTML = `<div class="empty-state">Failed to load documents: ${error.message}</div>`;
+      return;
+    }
+
+    allDocs = data || [];
+    renderDocs();
   }
 
   loadDocs();

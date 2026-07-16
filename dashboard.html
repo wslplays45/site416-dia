@@ -19,6 +19,7 @@
         <a href="dashboard.html" class="active">Dashboard</a>
         <a href="personnel.html">Personnel</a>
         <a href="documents.html">Documents</a>
+        <a href="banking.html">Banking</a>
         <a href="admin.html" id="admin-link" style="display:none;">Admin</a>
         <a href="#" id="signout-link">Sign Out</a>
       </nav>
@@ -47,6 +48,10 @@
         <div class="stat-num" id="stat-clearance">—</div>
         <div class="stat-label">Clearance Level</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-num mono" id="stat-balance">—</div>
+        <div class="stat-label">Account Balance</div>
+      </div>
     </div>
 
     <div class="panel">
@@ -72,7 +77,6 @@
   const profile = await getCurrentProfile();
 
   if (!profile) {
-    // Session exists but no profile row yet — invite redemption likely failed.
     document.getElementById("welcome-name").textContent = "Profile not found";
     return;
   }
@@ -85,21 +89,26 @@
     document.getElementById("admin-link").style.display = "inline";
   }
 
-  // Personnel count in division
   const { count: personnelCount } = await supabaseClient
     .from("personnel_records")
     .select("*", { count: "exact", head: true })
     .eq("division", profile.division);
   document.getElementById("stat-personnel").textContent = personnelCount ?? 0;
 
-  // Documents visible to this user
   const { data: docs, count: docCount } = await supabaseClient
     .from("documents")
-    .select("id, title, classification_level, created_at", { count: "exact" })
+    .select("id, title, classification_level, department_wide, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .limit(5);
 
   document.getElementById("stat-documents").textContent = docCount ?? 0;
+
+  const { data: account } = await supabaseClient
+    .from("bank_accounts")
+    .select("balance")
+    .eq("profile_id", profile.id)
+    .single();
+  document.getElementById("stat-balance").textContent = account ? formatCurrency(account.balance) : "—";
 
   const recentDocsEl = document.getElementById("recent-docs");
   if (!docs || docs.length === 0) {
@@ -107,11 +116,12 @@
   } else {
     recentDocsEl.innerHTML = `
       <table>
-        <thead><tr><th>Title</th><th>Classification</th><th>Filed</th></tr></thead>
+        <thead><tr><th>Title</th><th>Scope</th><th>Classification</th><th>Filed</th></tr></thead>
         <tbody>
           ${docs.map(d => `
             <tr>
               <td>${escapeHtml(d.title)}</td>
+              <td class="mono muted">${d.department_wide ? "Dept-wide" : "Division"}</td>
               <td class="mono">L${d.classification_level}</td>
               <td class="mono muted">${new Date(d.created_at).toLocaleDateString()}</td>
             </tr>
@@ -125,12 +135,6 @@
     e.preventDefault();
     signOut();
   });
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
-  }
 })();
 </script>
 

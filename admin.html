@@ -19,6 +19,7 @@
         <a href="dashboard.html">Dashboard</a>
         <a href="personnel.html">Personnel</a>
         <a href="documents.html">Documents</a>
+        <a href="banking.html">Banking</a>
         <a href="admin.html" class="active">Admin</a>
         <a href="#" id="signout-link">Sign Out</a>
       </nav>
@@ -37,11 +38,11 @@
       <div class="panel mb-24">
         <div class="panel-title"><span>Generate Invite Code</span></div>
         <div id="invite-error" class="error-box"></div>
-        <div id="invite-success" class="hint mb-24" style="display:none; color:#B58EDC;"></div>
+        <div id="invite-success" class="success-box"></div>
         <form id="invite-form">
           <div class="grid gap-12">
-            <div class="field"><label>Division</label><input type="text" id="i-division" required placeholder="e.g. Records"></div>
-            <div class="field"><label>Rank</label><input type="text" id="i-rank" required placeholder="e.g. Auditor"></div>
+            <div class="field"><label>Division</label><input type="text" id="i-division" required placeholder="e.g. Records, or Civilian"></div>
+            <div class="field"><label>Rank</label><input type="text" id="i-rank" required placeholder="e.g. Auditor, or Civilian"></div>
             <div class="field">
               <label>Access Role</label>
               <select id="i-role">
@@ -59,14 +60,29 @@
               </select>
             </div>
           </div>
+          <div class="checkbox-field">
+            <input type="checkbox" id="i-banking-staff">
+            <label for="i-banking-staff">Grant Banking Staff access (can view/edit all bank accounts)</label>
+          </div>
           <div class="field"><label>Note <span class="muted">(optional)</span></label><input type="text" id="i-note"></div>
           <button type="submit" class="btn">Generate Code</button>
         </form>
+        <p class="hint mt-24">Every account created — department personnel or civilian — automatically gets a bank account. Use "Civilian" as the division/rank for non-department signups.</p>
       </div>
 
       <div class="panel mb-24">
         <div class="panel-title"><span>Outstanding &amp; Used Codes</span></div>
         <div id="codes-table"><div class="empty-state">Loading...</div></div>
+      </div>
+
+      <div class="panel mb-24">
+        <div class="panel-title"><span>Banking Staff Management</span></div>
+        <div id="staff-error" class="error-box"></div>
+        <div class="field">
+          <label for="staff-search">Search Personnel by Name or Callsign</label>
+          <input type="text" id="staff-search" placeholder="Start typing...">
+        </div>
+        <div id="staff-results"><div class="empty-state">Enter a name to search.</div></div>
       </div>
 
       <div class="panel">
@@ -101,7 +117,7 @@
     const errorBox = document.getElementById("invite-error");
     const successBox = document.getElementById("invite-success");
     errorBox.classList.remove("show");
-    successBox.style.display = "none";
+    successBox.classList.remove("show");
 
     const code = generateCode();
 
@@ -111,6 +127,7 @@
       rank: document.getElementById("i-rank").value.trim(),
       role: document.getElementById("i-role").value,
       clearance_level: parseInt(document.getElementById("i-clearance").value, 10),
+      is_banking_staff: document.getElementById("i-banking-staff").checked,
       note: document.getElementById("i-note").value.trim() || null,
       created_by: profile.id
     };
@@ -125,7 +142,7 @@
 
     await logAction("invite.create", "invite_codes", null, { code, division: payload.division });
     successBox.textContent = `Code generated: ${code}`;
-    successBox.style.display = "block";
+    successBox.classList.add("show");
     e.target.reset();
     loadCodes();
   });
@@ -147,19 +164,87 @@
 
     el.innerHTML = `
       <table>
-        <thead><tr><th>Code</th><th>Division</th><th>Role</th><th>Status</th></tr></thead>
+        <thead><tr><th>Code</th><th>Division</th><th>Role</th><th>Banking</th><th>Status</th></tr></thead>
         <tbody>
           ${data.map(c => `
             <tr>
               <td class="mono">${c.code}</td>
               <td>${escapeHtml(c.division)}</td>
               <td class="mono">${c.role}</td>
+              <td class="mono muted">${c.is_banking_staff ? "Yes" : "—"}</td>
               <td>${c.used ? '<span class="muted mono">REDEEMED</span>' : '<span class="mono" style="color:#B58EDC;">OUTSTANDING</span>'}</td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     `;
+  }
+
+  // ---------- Banking staff management ----------
+  const staffSearch = document.getElementById("staff-search");
+  const staffResults = document.getElementById("staff-results");
+  const staffError = document.getElementById("staff-error");
+  let staffSearchTimeout;
+
+  staffSearch.addEventListener("input", () => {
+    clearTimeout(staffSearchTimeout);
+    staffSearchTimeout = setTimeout(runStaffSearch, 300);
+  });
+
+  async function runStaffSearch() {
+    const q = staffSearch.value.trim();
+    if (!q) {
+      staffResults.innerHTML = `<div class="empty-state">Enter a name to search.</div>`;
+      return;
+    }
+
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("id, full_name, callsign, division, rank, is_banking_staff")
+      .or(`full_name.ilike.%${q}%,callsign.ilike.%${q}%`)
+      .limit(25);
+
+    if (error) {
+      staffResults.innerHTML = `<div class="empty-state">${error.message}</div>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      staffResults.innerHTML = `<div class="empty-state">No personnel found.</div>`;
+      return;
+    }
+
+    staffResults.innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Division / Rank</th><th>Banking Staff</th><th></th></tr></thead>
+        <tbody>
+          ${data.map(p => `
+            <tr>
+              <td>${escapeHtml(p.full_name)} ${p.callsign ? `<span class="mono muted">(${escapeHtml(p.callsign)})</span>` : ""}</td>
+              <td class="muted">${escapeHtml(p.division)} / ${escapeHtml(p.rank)}</td>
+              <td>${p.is_banking_staff ? '<span class="mono" style="color:#A8D9BA;">GRANTED</span>' : '<span class="muted mono">—</span>'}</td>
+              <td><button type="button" class="btn small toggle-staff-btn" data-id="${p.id}" data-value="${!p.is_banking_staff}">${p.is_banking_staff ? "Revoke" : "Grant"}</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    staffResults.querySelectorAll(".toggle-staff-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        staffError.classList.remove("show");
+        const { error: toggleError } = await supabaseClient.rpc("set_banking_staff", {
+          p_profile_id: btn.dataset.id,
+          p_value: btn.dataset.value === "true"
+        });
+        if (toggleError) {
+          staffError.textContent = toggleError.message;
+          staffError.classList.add("show");
+          return;
+        }
+        await logAction("banking.staff_toggle", "profiles", btn.dataset.id, { granted: btn.dataset.value === "true" });
+        runStaffSearch();
+      });
+    });
   }
 
   async function loadAuditLog() {
@@ -187,12 +272,6 @@
         </tbody>
       </table>
     `;
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   loadCodes();

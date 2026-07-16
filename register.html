@@ -31,7 +31,7 @@
           <div class="field">
             <label for="invite-code">Invite Code</label>
             <input type="text" id="invite-code" class="mono" required placeholder="e.g. SITE416-XXXX-0000" autocomplete="off">
-            <p class="hint">Provided to you by your division head or the Directorate. Determines your division, rank, and access role automatically.</p>
+            <p class="hint">Provided to you by your division head or the Directorate. Determines your division, rank, access role, and (if applicable) banking staff status automatically.</p>
           </div>
           <div class="field">
             <label for="full-name">Full Name</label>
@@ -82,7 +82,6 @@
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
 
-    // Step 1: create the auth account
     const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
 
     if (signUpError) {
@@ -90,10 +89,6 @@
       return;
     }
 
-    // Step 2: redeem the invite code to populate the profile
-    // (requires an active session — if email confirmation is
-    // required on your Supabase project, do this step after
-    // the user confirms and logs in instead)
     const { error: redeemError } = await supabaseClient.rpc("redeem_invite_code", {
       p_code: code,
       p_full_name: fullName,
