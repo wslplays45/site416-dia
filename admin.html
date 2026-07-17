@@ -27,7 +27,7 @@
   </div>
 
   <div class="container mt-24 mb-24" style="flex:1;">
-    <h2 class="mb-24">Directorate Admin</h2>
+    <h2 class="mb-24">HICOM Admin</h2>
 
     <div id="access-denied" class="panel mb-24" style="display:none;">
       <p>Your clearance does not authorize access to this terminal. This attempt has been logged.</p>
@@ -41,33 +41,23 @@
         <div id="invite-success" class="success-box"></div>
         <form id="invite-form">
           <div class="grid gap-12">
-            <div class="field"><label>Division</label><input type="text" id="i-division" required placeholder="e.g. Records, or Civilian"></div>
-            <div class="field"><label>Rank</label><input type="text" id="i-rank" required placeholder="e.g. Auditor, or Civilian"></div>
             <div class="field">
-              <label>Access Role</label>
-              <select id="i-role">
-                <option value="viewer">Viewer</option>
-                <option value="auditor" selected>Auditor</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="admin">Admin</option>
-              </select>
+              <label>Division</label>
+              <select id="i-division"></select>
             </div>
             <div class="field">
-              <label>Clearance Level</label>
-              <select id="i-clearance">
-                <option value="1">L1</option><option value="2">L2</option>
-                <option value="3" selected>L3</option><option value="4">L4</option><option value="5">L5</option>
-              </select>
+              <label>Rank</label>
+              <select id="i-rank"></select>
             </div>
           </div>
           <div class="checkbox-field">
             <input type="checkbox" id="i-banking-staff">
-            <label for="i-banking-staff">Grant Banking Staff access (can view/edit all bank accounts)</label>
+            <label for="i-banking-staff">Grant Banking Staff access manually (MR+ in BAT-OFO already gets this automatically)</label>
           </div>
           <div class="field"><label>Note <span class="muted">(optional)</span></label><input type="text" id="i-note"></div>
           <button type="submit" class="btn">Generate Code</button>
         </form>
-        <p class="hint mt-24">Every account created — department personnel or civilian — automatically gets a bank account. Use "Civilian" as the division/rank for non-department signups.</p>
+        <p class="hint mt-24">HICOM rank always grants full admin access. Every account (including Civilian) automatically gets a personal bank account.</p>
       </div>
 
       <div class="panel mb-24">
@@ -76,10 +66,27 @@
       </div>
 
       <div class="panel mb-24">
-        <div class="panel-title"><span>Banking Staff Management</span></div>
+        <div class="panel-title"><span>Personnel Management</span></div>
+        <p class="hint mb-24">Search an existing account to change their rank or division (e.g. migrating legacy accounts to the new rank system).</p>
+        <div id="personnel-error" class="error-box"></div>
+        <div class="field">
+          <label for="personnel-search">Search by Name or Callsign</label>
+          <input type="text" id="personnel-search" placeholder="Start typing...">
+        </div>
+        <div id="personnel-results"><div class="empty-state">Enter a name to search.</div></div>
+      </div>
+
+      <div class="panel mb-24">
+        <div class="panel-title"><span>Loan Requests</span></div>
+        <div id="loan-error" class="error-box"></div>
+        <div id="loan-table"><div class="empty-state">Loading...</div></div>
+      </div>
+
+      <div class="panel mb-24">
+        <div class="panel-title"><span>Banking Staff Management (manual overrides)</span></div>
         <div id="staff-error" class="error-box"></div>
         <div class="field">
-          <label for="staff-search">Search Personnel by Name or Callsign</label>
+          <label for="staff-search">Search by Name or Callsign</label>
           <input type="text" id="staff-search" placeholder="Start typing...">
         </div>
         <div id="staff-results"><div class="empty-state">Enter a name to search.</div></div>
@@ -104,14 +111,17 @@
   const profile = await getCurrentProfile();
   if (!profile) return;
 
-  if (profile.role !== "admin") {
+  if (!isHicom(profile)) {
     document.getElementById("access-denied").style.display = "block";
     await logAction("admin.access_denied");
     return;
   }
 
   document.getElementById("admin-content").style.display = "block";
+  document.getElementById("i-division").innerHTML = divisionOptionsHtml();
+  document.getElementById("i-rank").innerHTML = rankOptionsHtml();
 
+  // ---------- Invite codes ----------
   document.getElementById("invite-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const errorBox = document.getElementById("invite-error");
@@ -123,10 +133,8 @@
 
     const payload = {
       code,
-      division: document.getElementById("i-division").value.trim(),
-      rank: document.getElementById("i-rank").value.trim(),
-      role: document.getElementById("i-role").value,
-      clearance_level: parseInt(document.getElementById("i-clearance").value, 10),
+      division: document.getElementById("i-division").value,
+      rank: document.getElementById("i-rank").value,
       is_banking_staff: document.getElementById("i-banking-staff").checked,
       note: document.getElementById("i-note").value.trim() || null,
       created_by: profile.id
@@ -140,10 +148,12 @@
       return;
     }
 
-    await logAction("invite.create", "invite_codes", null, { code, division: payload.division });
+    await logAction("invite.create", "invite_codes", null, { code, division: payload.division, rank: payload.rank });
     successBox.textContent = `Code generated: ${code}`;
     successBox.classList.add("show");
     e.target.reset();
+    document.getElementById("i-division").innerHTML = divisionOptionsHtml();
+    document.getElementById("i-rank").innerHTML = rankOptionsHtml();
     loadCodes();
   });
 
@@ -164,13 +174,13 @@
 
     el.innerHTML = `
       <table>
-        <thead><tr><th>Code</th><th>Division</th><th>Role</th><th>Banking</th><th>Status</th></tr></thead>
+        <thead><tr><th>Code</th><th>Division</th><th>Rank</th><th>Banking</th><th>Status</th></tr></thead>
         <tbody>
           ${data.map(c => `
             <tr>
               <td class="mono">${c.code}</td>
               <td>${escapeHtml(c.division)}</td>
-              <td class="mono">${c.role}</td>
+              <td class="mono">${c.rank}</td>
               <td class="mono muted">${c.is_banking_staff ? "Yes" : "—"}</td>
               <td>${c.used ? '<span class="muted mono">REDEEMED</span>' : '<span class="mono" style="color:#B58EDC;">OUTSTANDING</span>'}</td>
             </tr>
@@ -180,7 +190,135 @@
     `;
   }
 
-  // ---------- Banking staff management ----------
+  // ---------- Personnel management ----------
+  const personnelSearch = document.getElementById("personnel-search");
+  const personnelResults = document.getElementById("personnel-results");
+  const personnelError = document.getElementById("personnel-error");
+  let personnelTimeout;
+
+  personnelSearch.addEventListener("input", () => {
+    clearTimeout(personnelTimeout);
+    personnelTimeout = setTimeout(runPersonnelSearch, 300);
+  });
+
+  async function runPersonnelSearch() {
+    const q = personnelSearch.value.trim();
+    if (!q) {
+      personnelResults.innerHTML = `<div class="empty-state">Enter a name to search.</div>`;
+      return;
+    }
+
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("id, full_name, callsign, division, rank")
+      .or(`full_name.ilike.%${q}%,callsign.ilike.%${q}%`)
+      .limit(25);
+
+    if (error) {
+      personnelResults.innerHTML = `<div class="empty-state">${error.message}</div>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      personnelResults.innerHTML = `<div class="empty-state">No personnel found.</div>`;
+      return;
+    }
+
+    personnelResults.innerHTML = data.map(p => `
+      <div class="panel" style="margin-top:10px; padding:16px;">
+        <div class="flex-between gap-12" style="flex-wrap:wrap;">
+          <div>
+            <strong>${escapeHtml(p.full_name)}</strong> ${p.callsign ? `<span class="mono muted">(${escapeHtml(p.callsign)})</span>` : ""}
+            <div class="muted" style="font-size:12px;">Currently: ${escapeHtml(p.division)} / ${escapeHtml(p.rank)}</div>
+          </div>
+          <div class="flex gap-8" style="flex-wrap:wrap;">
+            <select class="edit-division" data-id="${p.id}" style="width:auto;">${divisionOptionsHtml(p.division)}</select>
+            <select class="edit-rank" data-id="${p.id}" style="width:auto;">${rankOptionsHtml(p.rank)}</select>
+            <button type="button" class="btn small save-profile-btn" data-id="${p.id}">Save</button>
+          </div>
+        </div>
+      </div>
+    `).join("");
+
+    personnelResults.querySelectorAll(".save-profile-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        personnelError.classList.remove("show");
+        const id = btn.dataset.id;
+        const newDivision = personnelResults.querySelector(`.edit-division[data-id="${id}"]`).value;
+        const newRank = personnelResults.querySelector(`.edit-rank[data-id="${id}"]`).value;
+
+        const { error: updateError } = await supabaseClient.rpc("admin_update_profile", {
+          p_profile_id: id,
+          p_rank: newRank,
+          p_division: newDivision
+        });
+
+        if (updateError) {
+          personnelError.textContent = updateError.message;
+          personnelError.classList.add("show");
+          return;
+        }
+
+        await logAction("admin.profile_update", "profiles", id, { rank: newRank, division: newDivision });
+        runPersonnelSearch();
+      });
+    });
+  }
+
+  // ---------- Loan requests ----------
+  async function loadLoans() {
+    const errorBox = document.getElementById("loan-error");
+    const { data, error } = await supabaseClient
+      .from("loan_requests")
+      .select("*, profiles:requested_by(full_name, callsign)")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    const el = document.getElementById("loan-table");
+    if (error) { el.innerHTML = `<div class="empty-state">${error.message}</div>`; return; }
+    if (!data || data.length === 0) { el.innerHTML = `<div class="empty-state">No loan requests on file.</div>`; return; }
+
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Requested By</th><th>Amount</th><th>Reason</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${data.map(l => `
+            <tr>
+              <td>${escapeHtml(l.profiles?.full_name || "Unknown")}</td>
+              <td class="mono">${formatCurrency(l.amount)} CR</td>
+              <td class="muted">${escapeHtml(l.reason || "—")}</td>
+              <td class="mono">${l.status.toUpperCase()}</td>
+              <td>
+                ${l.status === "pending" ? `
+                  <button type="button" class="btn small approve-loan-btn" data-id="${l.id}">Approve</button>
+                  <button type="button" class="btn small ghost deny-loan-btn" data-id="${l.id}">Deny</button>
+                ` : ""}
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    el.querySelectorAll(".approve-loan-btn, .deny-loan-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const approve = btn.classList.contains("approve-loan-btn");
+        const { error: reviewError } = await supabaseClient.rpc("review_loan", {
+          p_loan_id: btn.dataset.id,
+          p_approve: approve,
+          p_note: null
+        });
+        if (reviewError) {
+          document.getElementById("loan-error").textContent = reviewError.message;
+          document.getElementById("loan-error").classList.add("show");
+          return;
+        }
+        await logAction(approve ? "loan.approve" : "loan.deny", "loan_requests", btn.dataset.id);
+        loadLoans();
+      });
+    });
+  }
+
+  // ---------- Banking staff manual overrides ----------
   const staffSearch = document.getElementById("staff-search");
   const staffResults = document.getElementById("staff-results");
   const staffError = document.getElementById("staff-error");
@@ -215,7 +353,7 @@
 
     staffResults.innerHTML = `
       <table>
-        <thead><tr><th>Name</th><th>Division / Rank</th><th>Banking Staff</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Division / Rank</th><th>Manual Override</th><th></th></tr></thead>
         <tbody>
           ${data.map(p => `
             <tr>
@@ -275,6 +413,7 @@
   }
 
   loadCodes();
+  loadLoans();
   loadAuditLog();
 
   document.getElementById("signout-link").addEventListener("click", (e) => {

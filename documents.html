@@ -44,18 +44,12 @@
       <form id="doc-form">
         <div class="field"><label>Title</label><input type="text" id="d-title" required></div>
         <div class="field">
-          <label>Classification Level</label>
-          <select id="d-classification">
-            <option value="1">L1 — Division Staff</option>
-            <option value="2">L2 — Senior Staff</option>
-            <option value="3">L3 — Supervisory</option>
-            <option value="4">L4 — Directorate</option>
-            <option value="5">L5 — O5 Only</option>
-          </select>
+          <label>Visible To Ranks <span class="muted">(leave all unchecked to allow everyone in scope)</span></label>
+          <div class="flex gap-12" style="flex-wrap:wrap;" id="rank-checkboxes"></div>
         </div>
-        <div class="checkbox-field" id="dept-wide-field" style="display:none;">
+        <div class="checkbox-field">
           <input type="checkbox" id="d-department-wide">
-          <label for="d-department-wide">Post as Department-Wide (visible to all divisions, subject to classification)</label>
+          <label for="d-department-wide">Post as Department-Wide (visible to all divisions, subject to rank restriction above)</label>
         </div>
         <div class="field"><label>Body</label><textarea id="d-body" rows="6" required></textarea></div>
         <div class="flex gap-12">
@@ -88,11 +82,14 @@
 
   if (profile.role === "admin") document.getElementById("admin-link").style.display = "inline";
 
-  const canWrite = roleRank(profile.role) >= roleRank("auditor");
+  const canWrite = canPostDocuments(profile);
   if (canWrite) document.getElementById("new-doc-btn").style.display = "inline-flex";
 
-  const canPostDeptWide = roleRank(profile.role) >= roleRank("supervisor");
-  if (canPostDeptWide) document.getElementById("dept-wide-field").style.display = "flex";
+  document.getElementById("rank-checkboxes").innerHTML = RANKS.map(r => `
+    <label style="display:flex; align-items:center; gap:6px; text-transform:none; font-family:var(--font-body); font-size:13.5px; color:var(--paper);">
+      <input type="checkbox" class="rank-check" value="${r}" style="width:16px; height:16px; accent-color:var(--purple-br);"> ${r}
+    </label>
+  `).join("");
 
   document.getElementById("new-doc-btn").addEventListener("click", () => {
     document.getElementById("new-doc-panel").style.display = "block";
@@ -117,10 +114,12 @@
     const errorBox = document.getElementById("doc-error");
     errorBox.classList.remove("show");
 
+    const checkedRanks = Array.from(document.querySelectorAll(".rank-check:checked")).map(c => c.value);
+
     const payload = {
       title: document.getElementById("d-title").value.trim(),
-      classification_level: parseInt(document.getElementById("d-classification").value, 10),
-      department_wide: canPostDeptWide ? document.getElementById("d-department-wide").checked : false,
+      allowed_ranks: checkedRanks.length > 0 ? checkedRanks : null,
+      department_wide: document.getElementById("d-department-wide").checked,
       body: document.getElementById("d-body").value.trim(),
       division: profile.division,
       author: profile.id
@@ -145,7 +144,7 @@
     const el = document.getElementById("doc-list-inner");
 
     if (filtered.length === 0) {
-      el.innerHTML = `<div class="empty-state">Nothing on file yet within your clearance.</div>`;
+      el.innerHTML = `<div class="empty-state">Nothing on file yet within your access.</div>`;
       return;
     }
 
@@ -153,7 +152,7 @@
       <div class="panel" style="margin-top:12px;">
         <div class="flex-between" style="align-items:flex-start;">
           <h3 style="margin-bottom:4px;">${escapeHtml(d.title)}</h3>
-          <span class="stamp"><span class="stamp-dot"></span>L${d.classification_level}</span>
+          <span class="stamp"><span class="stamp-dot"></span>${d.allowed_ranks ? d.allowed_ranks.join("/") : "ALL RANKS"}</span>
         </div>
         <p class="muted mono" style="font-size:11px; margin-bottom:12px;">
           ${d.department_wide ? "DEPARTMENT-WIDE" : escapeHtml(d.division).toUpperCase()} &middot; FILED ${new Date(d.created_at).toLocaleString()}

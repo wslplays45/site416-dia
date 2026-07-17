@@ -86,7 +86,7 @@
 
   if (profile.role === "admin") document.getElementById("admin-link").style.display = "inline";
 
-  const canWrite = roleRank(profile.role) >= roleRank("supervisor");
+  const canWrite = canEditPersonnel(profile);
   if (canWrite) document.getElementById("new-record-btn").style.display = "inline-flex";
 
   document.getElementById("new-record-btn").addEventListener("click", () => {

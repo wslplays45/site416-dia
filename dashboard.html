@@ -97,7 +97,7 @@
 
   const { data: docs, count: docCount } = await supabaseClient
     .from("documents")
-    .select("id, title, classification_level, department_wide, created_at", { count: "exact" })
+    .select("id, title, allowed_ranks, department_wide, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .limit(5);
 
@@ -116,13 +116,13 @@
   } else {
     recentDocsEl.innerHTML = `
       <table>
-        <thead><tr><th>Title</th><th>Scope</th><th>Classification</th><th>Filed</th></tr></thead>
+        <thead><tr><th>Title</th><th>Scope</th><th>Visible To</th><th>Filed</th></tr></thead>
         <tbody>
           ${docs.map(d => `
             <tr>
               <td>${escapeHtml(d.title)}</td>
               <td class="mono muted">${d.department_wide ? "Dept-wide" : "Division"}</td>
-              <td class="mono">L${d.classification_level}</td>
+              <td class="mono">${d.allowed_ranks ? d.allowed_ranks.join("/") : "ALL"}</td>
               <td class="mono muted">${new Date(d.created_at).toLocaleDateString()}</td>
             </tr>
           `).join("")}

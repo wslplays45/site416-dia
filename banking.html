@@ -30,21 +30,38 @@
 
     <h2 class="mb-24">Banking</h2>
 
+    <div id="accounts-container"><div class="empty-state">Loading...</div></div>
+
     <div class="panel mb-24">
-      <div class="panel-title"><span>My Account</span></div>
-      <div id="my-balance">
-        <span class="balance-currency">CR</span><span class="balance-display" id="balance-num">—</span>
-      </div>
-      <h3 class="mt-24" style="font-size:13px;">Transaction History</h3>
-      <div id="my-transactions"><div class="empty-state">Loading...</div></div>
+      <div class="panel-title"><span>Create a Department Account</span></div>
+      <p class="hint mb-24">For managing funds on behalf of a separate site department. You'll be the account rep.</p>
+      <div id="dept-error" class="error-box"></div>
+      <div id="dept-success" class="success-box"></div>
+      <form id="dept-form" class="flex gap-12" style="align-items:flex-end; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:220px; margin-bottom:0;">
+          <label for="dept-name">Department / Site Name</label>
+          <input type="text" id="dept-name" placeholder="e.g. Site-19 Logistics" required>
+        </div>
+        <button type="submit" class="btn">Create Account</button>
+      </form>
+    </div>
+
+    <div class="panel mb-24">
+      <div class="panel-title"><span>Request a Loan</span></div>
+      <div id="loan-req-error" class="error-box"></div>
+      <div id="loan-req-success" class="success-box"></div>
+      <form id="loan-form">
+        <div class="field"><label>Amount (CR)</label><input type="number" id="loan-amount" step="0.01" min="0.01" required></div>
+        <div class="field"><label>Reason</label><input type="text" id="loan-reason"></div>
+        <button type="submit" class="btn">Submit Request</button>
+      </form>
+      <h3 class="mt-24" style="font-size:13px;">My Loan Requests</h3>
+      <div id="my-loans"><div class="empty-state">Loading...</div></div>
     </div>
 
     <div id="staff-panel" style="display:none;">
-
       <div class="panel mb-24">
-        <div class="panel-title">
-          <span>Account Operations</span>
-        </div>
+        <div class="panel-title"><span>Account Operations (Banking Staff)</span></div>
 
         <div class="tabs">
           <button class="tab-btn active" data-optab="deposit">Deposit</button>
@@ -55,32 +72,24 @@
         <div id="tx-error" class="error-box"></div>
         <div id="tx-success" class="success-box"></div>
 
-        <!-- Single-account picker (deposit / withdraw) -->
         <div id="single-account-picker">
           <div class="field">
             <label>Search Account</label>
-            <input type="text" id="search-single" placeholder="Name or callsign...">
+            <input type="text" id="search-single" placeholder="Name, callsign, or department name...">
           </div>
           <div id="results-single"></div>
           <p class="hint" id="single-selected-hint"></p>
         </div>
 
-        <!-- Two-account picker (transfer) -->
         <div id="transfer-account-picker" style="display:none;">
           <div class="grid gap-12">
             <div>
-              <div class="field">
-                <label>From Account</label>
-                <input type="text" id="search-from" placeholder="Name or callsign...">
-              </div>
+              <div class="field"><label>From Account</label><input type="text" id="search-from" placeholder="Search..."></div>
               <div id="results-from"></div>
               <p class="hint" id="from-selected-hint">No source account selected.</p>
             </div>
             <div>
-              <div class="field">
-                <label>To Account</label>
-                <input type="text" id="search-to" placeholder="Name or callsign...">
-              </div>
+              <div class="field"><label>To Account</label><input type="text" id="search-to" placeholder="Search..."></div>
               <div id="results-to"></div>
               <p class="hint" id="to-selected-hint">No destination account selected.</p>
             </div>
@@ -88,18 +97,31 @@
         </div>
 
         <form id="op-form" class="mt-24">
-          <div class="field">
-            <label>Amount (CR)</label>
-            <input type="number" id="op-amount" step="0.01" min="0.01" required>
-          </div>
-          <div class="field">
-            <label>Note <span class="muted">(optional)</span></label>
-            <input type="text" id="op-note">
-          </div>
+          <div class="field"><label>Amount (CR)</label><input type="number" id="op-amount" step="0.01" min="0.01" required></div>
+          <div class="field"><label>Note <span class="muted">(optional)</span></label><input type="text" id="op-note"></div>
           <button type="submit" class="btn">Submit Transaction</button>
         </form>
       </div>
+    </div>
 
+    <div id="disburse-panel" style="display:none;">
+      <div class="panel mb-24">
+        <div class="panel-title"><span>Disburse Funds (CFLT-OFO)</span></div>
+        <p class="hint mb-24">Push funds into any account, including DIA-IAD's or another department's account.</p>
+        <div id="disburse-error" class="error-box"></div>
+        <div id="disburse-success" class="success-box"></div>
+        <div class="field">
+          <label>Search Account</label>
+          <input type="text" id="search-disburse" placeholder="Name, callsign, or department name...">
+        </div>
+        <div id="results-disburse"></div>
+        <p class="hint" id="disburse-selected-hint">No target account selected.</p>
+        <form id="disburse-form" class="mt-24">
+          <div class="field"><label>Amount (CR)</label><input type="number" id="disburse-amount" step="0.01" min="0.01" required></div>
+          <div class="field"><label>Note <span class="muted">(optional)</span></label><input type="text" id="disburse-note"></div>
+          <button type="submit" class="btn">Disburse</button>
+        </form>
+      </div>
     </div>
 
   </div>
@@ -117,31 +139,51 @@
 
   if (profile.role === "admin") document.getElementById("admin-link").style.display = "inline";
 
-  const isBankingStaff = profile.role === "admin" || profile.is_banking_staff;
+  const isBankStaff = isBankingOrAdmin(profile);
+  const canDisburse = canDisperseFunds(profile);
 
-  // ---------- My Account ----------
-  let myAccount = null;
-
-  async function loadMyAccount() {
-    const { data: account } = await supabaseClient
+  // ---------- My Accounts (personal + any department accounts) ----------
+  async function loadMyAccounts() {
+    const { data: accounts, error } = await supabaseClient
       .from("bank_accounts")
       .select("*")
       .eq("profile_id", profile.id)
-      .single();
+      .order("account_type", { ascending: true });
 
-    myAccount = account;
-    document.getElementById("balance-num").textContent = account ? formatCurrency(account.balance) : "0.00";
+    const container = document.getElementById("accounts-container");
 
-    if (!account) return;
+    if (error || !accounts || accounts.length === 0) {
+      container.innerHTML = `<div class="panel mb-24"><div class="empty-state">No accounts found.</div></div>`;
+      return;
+    }
 
+    container.innerHTML = accounts.map(a => `
+      <div class="panel mb-24">
+        <div class="panel-title">
+          <span>${a.account_type === "personal" ? "My Account" : `Department Account — ${escapeHtml(a.department_name)}`}</span>
+        </div>
+        <div><span class="balance-currency">CR</span><span class="balance-display">${formatCurrency(a.balance)}</span></div>
+        <h3 class="mt-24" style="font-size:13px;">Transaction History</h3>
+        <div id="tx-history-${a.id}"><div class="empty-state">Loading...</div></div>
+      </div>
+    `).join("");
+
+    for (const a of accounts) {
+      loadTransactions(a.id);
+    }
+  }
+
+  async function loadTransactions(accountId) {
     const { data: txs } = await supabaseClient
       .from("bank_transactions")
       .select("*")
-      .eq("account_id", account.id)
+      .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(25);
 
-    const el = document.getElementById("my-transactions");
+    const el = document.getElementById(`tx-history-${accountId}`);
+    if (!el) return;
+
     if (!txs || txs.length === 0) {
       el.innerHTML = `<div class="empty-state">No transactions yet.</div>`;
       return;
@@ -165,18 +207,87 @@
     `;
   }
 
-  loadMyAccount();
+  loadMyAccounts();
 
-  // ---------- Banking staff operations ----------
-  if (!isBankingStaff) return;
+  // ---------- Create department account ----------
+  document.getElementById("dept-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById("dept-error");
+    const successBox = document.getElementById("dept-success");
+    errorBox.classList.remove("show");
+    successBox.classList.remove("show");
 
-  document.getElementById("staff-panel").style.display = "block";
+    const name = document.getElementById("dept-name").value.trim();
+    const { error } = await supabaseClient.rpc("create_department_account", { p_department_name: name });
 
-  let currentOp = "deposit";
-  let singleSelected = null;
-  let fromSelected = null;
-  let toSelected = null;
+    if (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.add("show");
+      return;
+    }
 
+    successBox.textContent = `Department account "${name}" created.`;
+    successBox.classList.add("show");
+    e.target.reset();
+    loadMyAccounts();
+  });
+
+  // ---------- Loan requests ----------
+  document.getElementById("loan-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById("loan-req-error");
+    const successBox = document.getElementById("loan-req-success");
+    errorBox.classList.remove("show");
+    successBox.classList.remove("show");
+
+    const amount = parseFloat(document.getElementById("loan-amount").value);
+    const reason = document.getElementById("loan-reason").value.trim() || null;
+
+    const { error } = await supabaseClient.rpc("request_loan", { p_amount: amount, p_reason: reason });
+
+    if (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.add("show");
+      return;
+    }
+
+    successBox.textContent = "Loan request submitted.";
+    successBox.classList.add("show");
+    e.target.reset();
+    loadMyLoans();
+  });
+
+  async function loadMyLoans() {
+    const { data, error } = await supabaseClient
+      .from("loan_requests")
+      .select("*")
+      .eq("requested_by", profile.id)
+      .order("created_at", { ascending: false });
+
+    const el = document.getElementById("my-loans");
+    if (error) { el.innerHTML = `<div class="empty-state">${error.message}</div>`; return; }
+    if (!data || data.length === 0) { el.innerHTML = `<div class="empty-state">No loan requests yet.</div>`; return; }
+
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Amount</th><th>Reason</th><th>Status</th><th>Requested</th></tr></thead>
+        <tbody>
+          ${data.map(l => `
+            <tr>
+              <td class="mono">${formatCurrency(l.amount)} CR</td>
+              <td class="muted">${escapeHtml(l.reason || "—")}</td>
+              <td class="mono">${l.status.toUpperCase()}</td>
+              <td class="mono muted">${new Date(l.created_at).toLocaleDateString()}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  loadMyLoans();
+
+  // ---------- Shared account searcher builder ----------
   function makeSearcher(inputId, resultsId, onSelect) {
     const input = document.getElementById(inputId);
     const resultsEl = document.getElementById(resultsId);
@@ -193,25 +304,20 @@
 
       const { data, error } = await supabaseClient.rpc("bank_search_accounts", { p_query: q });
 
-      if (error) {
-        resultsEl.innerHTML = `<div class="empty-state">${error.message}</div>`;
-        return;
-      }
-      if (!data || data.length === 0) {
-        resultsEl.innerHTML = `<div class="empty-state">No accounts found.</div>`;
-        return;
-      }
+      if (error) { resultsEl.innerHTML = `<div class="empty-state">${error.message}</div>`; return; }
+      if (!data || data.length === 0) { resultsEl.innerHTML = `<div class="empty-state">No accounts found.</div>`; return; }
 
       resultsEl.innerHTML = `
         <table>
-          <thead><tr><th>Name</th><th>Division / Rank</th><th>Balance</th><th></th></tr></thead>
+          <thead><tr><th>Name / Department</th><th>Type</th><th>Balance</th><th></th></tr></thead>
           <tbody>
             ${data.map(r => `
               <tr>
-                <td>${escapeHtml(r.full_name)} ${r.callsign ? `<span class="mono muted">(${escapeHtml(r.callsign)})</span>` : ""}</td>
-                <td class="muted">${escapeHtml(r.division)} / ${escapeHtml(r.rank)}</td>
+                <td>${r.account_type === "department" ? escapeHtml(r.department_name) : escapeHtml(r.full_name)}
+                  ${r.callsign ? `<span class="mono muted">(${escapeHtml(r.callsign)})</span>` : ""}</td>
+                <td class="muted">${r.account_type === "department" ? "Department" : `${escapeHtml(r.division)} / ${escapeHtml(r.rank)}`}</td>
                 <td class="mono">${formatCurrency(r.balance)}</td>
-                <td><button type="button" class="btn small pick-btn" data-id="${r.account_id}" data-name="${escapeHtml(r.full_name)}">Select</button></td>
+                <td><button type="button" class="btn small pick-btn" data-id="${r.account_id}" data-name="${escapeHtml(r.account_type === 'department' ? r.department_name : r.full_name)}">Select</button></td>
               </tr>
             `).join("")}
           </tbody>
@@ -228,88 +334,139 @@
     }
   }
 
-  makeSearcher("search-single", "results-single", (acct) => {
-    singleSelected = acct;
-    document.getElementById("single-selected-hint").textContent = `Selected: ${acct.name}`;
-  });
-  makeSearcher("search-from", "results-from", (acct) => {
-    fromSelected = acct;
-    document.getElementById("from-selected-hint").textContent = `Selected: ${acct.name}`;
-  });
-  makeSearcher("search-to", "results-to", (acct) => {
-    toSelected = acct;
-    document.getElementById("to-selected-hint").textContent = `Selected: ${acct.name}`;
-  });
+  // ---------- Banking staff operations ----------
+  if (isBankStaff) {
+    document.getElementById("staff-panel").style.display = "block";
 
-  document.querySelectorAll("[data-optab]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("[data-optab]").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentOp = btn.dataset.optab;
-      document.getElementById("single-account-picker").style.display = currentOp === "transfer" ? "none" : "block";
-      document.getElementById("transfer-account-picker").style.display = currentOp === "transfer" ? "block" : "none";
-      document.getElementById("tx-error").classList.remove("show");
-      document.getElementById("tx-success").classList.remove("show");
+    let currentOp = "deposit";
+    let singleSelected = null;
+    let fromSelected = null;
+    let toSelected = null;
+
+    makeSearcher("search-single", "results-single", (acct) => {
+      singleSelected = acct;
+      document.getElementById("single-selected-hint").textContent = `Selected: ${acct.name}`;
     });
-  });
+    makeSearcher("search-from", "results-from", (acct) => {
+      fromSelected = acct;
+      document.getElementById("from-selected-hint").textContent = `Selected: ${acct.name}`;
+    });
+    makeSearcher("search-to", "results-to", (acct) => {
+      toSelected = acct;
+      document.getElementById("to-selected-hint").textContent = `Selected: ${acct.name}`;
+    });
 
-  document.getElementById("op-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const errorBox = document.getElementById("tx-error");
-    const successBox = document.getElementById("tx-success");
-    errorBox.classList.remove("show");
-    successBox.classList.remove("show");
-
-    const amount = parseFloat(document.getElementById("op-amount").value);
-    const note = document.getElementById("op-note").value.trim() || null;
-    let result, successMsg;
-
-    if (currentOp === "deposit" || currentOp === "withdraw") {
-      if (!singleSelected) {
-        errorBox.textContent = "Select an account first.";
-        errorBox.classList.add("show");
-        return;
-      }
-      const fn = currentOp === "deposit" ? "bank_deposit" : "bank_withdraw";
-      result = await supabaseClient.rpc(fn, { p_account_id: singleSelected.id, p_amount: amount, p_note: note });
-      if (!result.error) {
-        successMsg = `${currentOp === "deposit" ? "Deposited" : "Withdrew"} ${formatCurrency(amount)} CR ${currentOp === "deposit" ? "to" : "from"} ${singleSelected.name}. New balance: ${formatCurrency(result.data.balance)} CR.`;
-      }
-    } else {
-      if (!fromSelected || !toSelected) {
-        errorBox.textContent = "Select both a source and destination account.";
-        errorBox.classList.add("show");
-        return;
-      }
-      result = await supabaseClient.rpc("bank_transfer", {
-        p_from_account: fromSelected.id,
-        p_to_account: toSelected.id,
-        p_amount: amount,
-        p_note: note
+    document.querySelectorAll("[data-optab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-optab]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentOp = btn.dataset.optab;
+        document.getElementById("single-account-picker").style.display = currentOp === "transfer" ? "none" : "block";
+        document.getElementById("transfer-account-picker").style.display = currentOp === "transfer" ? "block" : "none";
+        document.getElementById("tx-error").classList.remove("show");
+        document.getElementById("tx-success").classList.remove("show");
       });
-      if (!result.error) {
-        successMsg = `Transferred ${formatCurrency(amount)} CR from ${fromSelected.name} to ${toSelected.name}.`;
+    });
+
+    document.getElementById("op-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("tx-error");
+      const successBox = document.getElementById("tx-success");
+      errorBox.classList.remove("show");
+      successBox.classList.remove("show");
+
+      const amount = parseFloat(document.getElementById("op-amount").value);
+      const note = document.getElementById("op-note").value.trim() || null;
+      let result, successMsg;
+
+      if (currentOp === "deposit" || currentOp === "withdraw") {
+        if (!singleSelected) {
+          errorBox.textContent = "Select an account first.";
+          errorBox.classList.add("show");
+          return;
+        }
+        const fn = currentOp === "deposit" ? "bank_deposit" : "bank_withdraw";
+        result = await supabaseClient.rpc(fn, { p_account_id: singleSelected.id, p_amount: amount, p_note: note });
+        if (!result.error) {
+          successMsg = `${currentOp === "deposit" ? "Deposited" : "Withdrew"} ${formatCurrency(amount)} CR ${currentOp === "deposit" ? "to" : "from"} ${singleSelected.name}. New balance: ${formatCurrency(result.data.balance)} CR.`;
+        }
+      } else {
+        if (!fromSelected || !toSelected) {
+          errorBox.textContent = "Select both a source and destination account.";
+          errorBox.classList.add("show");
+          return;
+        }
+        result = await supabaseClient.rpc("bank_transfer", {
+          p_from_account: fromSelected.id, p_to_account: toSelected.id, p_amount: amount, p_note: note
+        });
+        if (!result.error) {
+          successMsg = `Transferred ${formatCurrency(amount)} CR from ${fromSelected.name} to ${toSelected.name}.`;
+        }
       }
-    }
 
-    if (result.error) {
-      errorBox.textContent = result.error.message;
-      errorBox.classList.add("show");
-      return;
-    }
+      if (result.error) {
+        errorBox.textContent = result.error.message;
+        errorBox.classList.add("show");
+        return;
+      }
 
-    await logAction(`banking.${currentOp}`, "bank_accounts", null, { amount, note });
-    successBox.textContent = successMsg;
-    successBox.classList.add("show");
-    document.getElementById("op-form").reset();
+      await logAction(`banking.${currentOp}`, "bank_accounts", null, { amount, note });
+      successBox.textContent = successMsg;
+      successBox.classList.add("show");
+      document.getElementById("op-form").reset();
+      singleSelected = null; fromSelected = null; toSelected = null;
+      document.getElementById("single-selected-hint").textContent = "";
+      document.getElementById("from-selected-hint").textContent = "No source account selected.";
+      document.getElementById("to-selected-hint").textContent = "No destination account selected.";
+      loadMyAccounts();
+    });
+  }
 
-    singleSelected = null; fromSelected = null; toSelected = null;
-    document.getElementById("single-selected-hint").textContent = "";
-    document.getElementById("from-selected-hint").textContent = "No source account selected.";
-    document.getElementById("to-selected-hint").textContent = "No destination account selected.";
+  // ---------- Fund dispersal (CFLT-OFO) ----------
+  if (canDisburse) {
+    document.getElementById("disburse-panel").style.display = "block";
+    let disburseSelected = null;
 
-    loadMyAccount();
-  });
+    makeSearcher("search-disburse", "results-disburse", (acct) => {
+      disburseSelected = acct;
+      document.getElementById("disburse-selected-hint").textContent = `Selected: ${acct.name}`;
+    });
+
+    document.getElementById("disburse-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("disburse-error");
+      const successBox = document.getElementById("disburse-success");
+      errorBox.classList.remove("show");
+      successBox.classList.remove("show");
+
+      if (!disburseSelected) {
+        errorBox.textContent = "Select a target account first.";
+        errorBox.classList.add("show");
+        return;
+      }
+
+      const amount = parseFloat(document.getElementById("disburse-amount").value);
+      const note = document.getElementById("disburse-note").value.trim() || null;
+
+      const { data, error } = await supabaseClient.rpc("disburse_funds", {
+        p_account_id: disburseSelected.id, p_amount: amount, p_note: note
+      });
+
+      if (error) {
+        errorBox.textContent = error.message;
+        errorBox.classList.add("show");
+        return;
+      }
+
+      await logAction("banking.disburse", "bank_accounts", disburseSelected.id, { amount, note });
+      successBox.textContent = `Disbursed ${formatCurrency(amount)} CR to ${disburseSelected.name}. New balance: ${formatCurrency(data.balance)} CR.`;
+      successBox.classList.add("show");
+      document.getElementById("disburse-form").reset();
+      disburseSelected = null;
+      document.getElementById("disburse-selected-hint").textContent = "No target account selected.";
+      loadMyAccounts();
+    });
+  }
 
   document.getElementById("signout-link").addEventListener("click", (e) => {
     e.preventDefault();

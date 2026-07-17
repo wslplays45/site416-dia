@@ -4,8 +4,8 @@
 // dashboard.
 // ============================================================
 
-const SUPABASE_URL = "https://ikfphgluykkvoatdoafj.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlrZnBoZ2x1eWtrdm9hdGRvYWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwODAzOTUsImV4cCI6MjA5OTY1NjM5NX0.fs2zG7y5ub2xiyu8xb34lQfR2gvzVAetGEt0s2RmGUU";
+const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -54,13 +54,51 @@ async function signOut() {
   window.location.href = "index.html";
 }
 
-function roleRank(role) {
-  return { viewer: 0, auditor: 1, supervisor: 2, admin: 3 }[role] ?? 0;
+const RANK_TIERS = { NP: 1, LR: 2, MR: 3, HR: 4, HICOM: 5, Civilian: 0 };
+const DIVISIONS = ["TMT-OFO", "BAT-OFO", "CFLT-OFO", "HSCT-HSS", "DIA-IAD"];
+const RANKS = ["NP", "LR", "MR", "HR", "HICOM"];
+
+function rankTier(rank) {
+  return RANK_TIERS[rank] ?? 0;
+}
+
+function isHicom(profile) {
+  return profile?.rank === "HICOM";
+}
+
+function canPostDocuments(profile) {
+  return isHicom(profile) || rankTier(profile?.rank) >= rankTier("HR");
+}
+
+function canEditPersonnel(profile) {
+  return isHicom(profile) || rankTier(profile?.rank) >= rankTier("HR");
+}
+
+function isBankingOrAdmin(profile) {
+  return isHicom(profile)
+    || !!profile?.is_banking_staff
+    || (rankTier(profile?.rank) >= rankTier("MR") && profile?.division === "BAT-OFO");
+}
+
+function canDisperseFunds(profile) {
+  return isHicom(profile)
+    || (rankTier(profile?.rank) >= rankTier("HR") && profile?.division === "CFLT-OFO");
 }
 
 function renderStamp(profile) {
   if (!profile) return "";
-  return `<span class="stamp role-${profile.role}"><span class="stamp-dot"></span>${profile.rank} · ${profile.division}</span>`;
+  const stampClass = isHicom(profile) ? "role-admin" : rankTier(profile.rank) >= rankTier("HR") ? "role-supervisor" : rankTier(profile.rank) >= rankTier("MR") ? "role-auditor" : "role-viewer";
+  return `<span class="stamp ${stampClass}"><span class="stamp-dot"></span>${profile.rank} · ${profile.division}</span>`;
+}
+
+function rankOptionsHtml(selected = "") {
+  return RANKS.map(r => `<option value="${r}" ${r === selected ? "selected" : ""}>${r}</option>`).join("")
+    + `<option value="Civilian" ${selected === "Civilian" ? "selected" : ""}>Civilian</option>`;
+}
+
+function divisionOptionsHtml(selected = "") {
+  return DIVISIONS.map(d => `<option value="${d}" ${d === selected ? "selected" : ""}>${d}</option>`).join("")
+    + `<option value="Civilian" ${selected === "Civilian" ? "selected" : ""}>Civilian</option>`;
 }
 
 function formatCurrency(amount) {
