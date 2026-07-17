@@ -54,6 +54,10 @@
             <input type="checkbox" id="i-banking-staff">
             <label for="i-banking-staff">Grant Banking Staff access manually (MR+ in BAT-OFO already gets this automatically)</label>
           </div>
+          <div class="checkbox-field">
+            <input type="checkbox" id="i-department-rep">
+            <label for="i-department-rep">Grant Department Rep access (can create department bank accounts)</label>
+          </div>
           <div class="field"><label>Note <span class="muted">(optional)</span></label><input type="text" id="i-note"></div>
           <button type="submit" class="btn">Generate Code</button>
         </form>
@@ -90,6 +94,16 @@
           <input type="text" id="staff-search" placeholder="Start typing...">
         </div>
         <div id="staff-results"><div class="empty-state">Enter a name to search.</div></div>
+      </div>
+
+      <div class="panel mb-24">
+        <div class="panel-title"><span>Department Rep Management</span></div>
+        <div id="rep-error" class="error-box"></div>
+        <div class="field">
+          <label for="rep-search">Search by Name or Callsign</label>
+          <input type="text" id="rep-search" placeholder="Start typing...">
+        </div>
+        <div id="rep-results"><div class="empty-state">Enter a name to search.</div></div>
       </div>
 
       <div class="panel">
@@ -136,6 +150,7 @@
       division: document.getElementById("i-division").value,
       rank: document.getElementById("i-rank").value,
       is_banking_staff: document.getElementById("i-banking-staff").checked,
+      is_department_rep: document.getElementById("i-department-rep").checked,
       note: document.getElementById("i-note").value.trim() || null,
       created_by: profile.id
     };
@@ -381,6 +396,73 @@
         }
         await logAction("banking.staff_toggle", "profiles", btn.dataset.id, { granted: btn.dataset.value === "true" });
         runStaffSearch();
+      });
+    });
+  }
+
+  // ---------- Department Rep management ----------
+  const repSearch = document.getElementById("rep-search");
+  const repResults = document.getElementById("rep-results");
+  const repError = document.getElementById("rep-error");
+  let repSearchTimeout;
+
+  repSearch.addEventListener("input", () => {
+    clearTimeout(repSearchTimeout);
+    repSearchTimeout = setTimeout(runRepSearch, 300);
+  });
+
+  async function runRepSearch() {
+    const q = repSearch.value.trim();
+    if (!q) {
+      repResults.innerHTML = `<div class="empty-state">Enter a name to search.</div>`;
+      return;
+    }
+
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("id, full_name, callsign, division, rank, is_department_rep")
+      .or(`full_name.ilike.%${q}%,callsign.ilike.%${q}%`)
+      .limit(25);
+
+    if (error) {
+      repResults.innerHTML = `<div class="empty-state">${error.message}</div>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      repResults.innerHTML = `<div class="empty-state">No personnel found.</div>`;
+      return;
+    }
+
+    repResults.innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Division / Rank</th><th>Department Rep</th><th></th></tr></thead>
+        <tbody>
+          ${data.map(p => `
+            <tr>
+              <td>${escapeHtml(p.full_name)} ${p.callsign ? `<span class="mono muted">(${escapeHtml(p.callsign)})</span>` : ""}</td>
+              <td class="muted">${escapeHtml(p.division)} / ${escapeHtml(p.rank)}</td>
+              <td>${p.is_department_rep ? '<span class="mono" style="color:#A8D9BA;">GRANTED</span>' : '<span class="muted mono">—</span>'}</td>
+              <td><button type="button" class="btn small toggle-rep-btn" data-id="${p.id}" data-value="${!p.is_department_rep}">${p.is_department_rep ? "Revoke" : "Grant"}</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    repResults.querySelectorAll(".toggle-rep-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        repError.classList.remove("show");
+        const { error: toggleError } = await supabaseClient.rpc("set_department_rep", {
+          p_profile_id: btn.dataset.id,
+          p_value: btn.dataset.value === "true"
+        });
+        if (toggleError) {
+          repError.textContent = toggleError.message;
+          repError.classList.add("show");
+          return;
+        }
+        await logAction("banking.rep_toggle", "profiles", btn.dataset.id, { granted: btn.dataset.value === "true" });
+        runRepSearch();
       });
     });
   }
